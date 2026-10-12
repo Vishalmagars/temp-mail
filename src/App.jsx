@@ -104,7 +104,7 @@ export default function App() {
         setTotalMessages(result.total);
       } catch (err) {
         console.error('Error fetching messages:', err);
-        if (err.status === 401 || err.status === 404) {
+        if (err.status === 401) {
           addToast('Your temporary inbox session has expired. Generating a fresh one.', 'error');
           handleGenerateNewInbox();
         } else {
