@@ -114,16 +114,46 @@ export async function handler(event, context) {
         };
       }
 
+      let cleanText = emailData.text || '';
+      let cleanHtml = emailData.html || '';
+      let cleanSubject = emailData.subject || '(No Subject)';
+      let cleanFrom = typeof emailData.from === 'object' ? emailData.from : { address: emailData.from || 'sender@example.com', name: 'Sender' };
+
+      // If text contains raw MIME / RFC822 headers, parse with PostalMime to extract clean body
+      if (cleanText.includes('Received:') || cleanText.includes('ARC-') || cleanText.includes('Content-Type:')) {
+        try {
+          const parser = new PostalMime();
+          const parsed = await parser.parse(cleanText);
+          cleanText = parsed.text || cleanText;
+          cleanHtml = parsed.html || cleanHtml;
+          if (parsed.subject && parsed.subject.trim()) {
+            cleanSubject = parsed.subject.trim();
+          }
+          if (parsed.from && parsed.from.address) {
+            cleanFrom = {
+              address: parsed.from.address,
+              name: parsed.from.name || parsed.from.address.split('@')[0],
+            };
+          }
+        } catch (parseErr) {
+          console.warn('PostalMime webhook fallback parse error:', parseErr);
+        }
+      }
+
+      if (!cleanSubject || cleanSubject === '-' || cleanSubject.startsWith('To:')) {
+        cleanSubject = '(No Subject)';
+      }
+
       const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
       const newMsg = {
         id: messageId,
         msgid: messageId,
         to: [{ address: toAddress }],
-        from: typeof emailData.from === 'object' ? emailData.from : { address: emailData.from || 'sender@example.com', name: 'Sender' },
-        subject: emailData.subject || '(No Subject)',
-        intro: (emailData.text || '').substring(0, 100),
-        text: emailData.text || '',
-        html: emailData.html || '',
+        from: cleanFrom,
+        subject: cleanSubject,
+        intro: (cleanText || '').replace(/\s+/g, ' ').trim().substring(0, 100) || '(No preview)',
+        text: cleanText,
+        html: cleanHtml,
         seen: false,
         hasAttachments: Boolean(emailData.attachments && emailData.attachments.length > 0),
         attachments: emailData.attachments || [],
