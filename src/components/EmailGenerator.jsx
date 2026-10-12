@@ -107,7 +107,7 @@ export default function EmailGenerator({
                 >
                   {domains.map((dom) => (
                     <option key={dom} value={dom}>
-                      @{dom}
+                      @{dom} {dom === 'maxxspace.com' ? '⚡ (Instant Receiving)' : '🌐 (Custom Inbound)'}
                     </option>
                   ))}
                 </select>

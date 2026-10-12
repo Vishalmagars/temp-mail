@@ -101,12 +101,13 @@ export const emailService = {
         .filter((d) => d && d.isActive !== false)
         .map((d) => d.domain);
 
+      // Ensure provider domain with live MX records is first by default
       if (!domainList.includes(CUSTOM_DOMAIN)) {
-        domainList.unshift(CUSTOM_DOMAIN);
+        domainList.push(CUSTOM_DOMAIN);
       }
       return domainList;
     } catch {
-      return [CUSTOM_DOMAIN, 'maxxspace.com'];
+      return ['maxxspace.com', CUSTOM_DOMAIN];
     }
   },
 
