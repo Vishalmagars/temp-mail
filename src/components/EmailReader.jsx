@@ -29,7 +29,7 @@ export default function EmailReader({
 }) {
   const { addToast } = useToast();
   const [viewMode, setViewMode] = useState('html'); // 'html' | 'text' | 'raw'
-  const [allowRemoteImages, setAllowRemoteImages] = useState(false);
+  const [allowRemoteImages, setAllowRemoteImages] = useState(true);
 
   // Sanitize HTML memoized
   const sanitizedHtml = useMemo(() => {

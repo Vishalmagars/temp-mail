@@ -10,7 +10,7 @@ import { emailService } from './services/emailService';
 import { useToast } from './context/ToastContext';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-const DEFAULT_POLL_INTERVAL = parseInt(import.meta.env.VITE_POLL_INTERVAL_SECONDS || '10', 10);
+const DEFAULT_POLL_INTERVAL = 3; // Ultra-fast 3-second rapid polling for instant incoming mail
 
 /**
  * Play a gentle synth chime using Web Audio API
@@ -97,6 +97,10 @@ export default function App() {
         if (hasNew && prevMessageIdsRef.current.size > 0) {
           playNotificationChime();
           addToast(`New email received: "${newestSubject || 'New Message'}"`, 'info', 5000);
+          document.title = `(1) 📩 New Email! — ITCareerPoint Mail`;
+          setTimeout(() => {
+            document.title = 'ITCareerPoint Mail — Free & Instant Disposable Temporary Email (@itcareerpoint.in)';
+          }, 8000);
         }
 
         prevMessageIdsRef.current = currentIds;
