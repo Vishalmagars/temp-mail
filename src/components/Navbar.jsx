@@ -17,12 +17,12 @@ export default function Navbar({ onRefreshAll, isRefreshing, providerStatus = 'o
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold tracking-tight text-white">Drop<span className="text-indigo-400">Mail</span></span>
+                <span className="text-lg font-bold tracking-tight text-white">ITCareerPoint <span className="text-indigo-400">Mail</span></span>
                 <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                   DISPOSABLE
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">Instant Anonymous Temporary Email</p>
+              <p className="text-[11px] text-slate-400 hidden sm:block">Instant Anonymous Temporary Email on itcareerpoint.in</p>
             </div>
           </div>
 
@@ -31,7 +31,7 @@ export default function Navbar({ onRefreshAll, isRefreshing, providerStatus = 'o
             {/* Provider status badge */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
               <span className={`w-2 h-2 rounded-full ${providerStatus === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
-              <span>Mail.tm Network: <strong className="text-slate-200">{providerStatus === 'online' ? 'Active' : 'Offline'}</strong></span>
+              <span>Network: <strong className="text-slate-200">itcareerpoint.in Active</strong></span>
             </div>
 
             {/* Quick Refresh All */}

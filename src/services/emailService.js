@@ -1,7 +1,8 @@
 // Email Provider Service Layer
-// Standardized client interface with modular architecture and error handling
+// Standardized client interface with dual-engine support (Mail.tm + Custom Domain Ingestion)
 
 const API_BASE = '/api';
+const CUSTOM_DOMAIN = 'itcareerpoint.in';
 
 /**
  * Helper for API requests with timeout and error extraction
@@ -30,7 +31,6 @@ async function apiRequest(endpoint, options = {}) {
 
     clearTimeout(timeoutId);
 
-    // Some endpoints return 204 No Content (e.g. DELETE)
     if (response.status === 204) {
       return { success: true };
     }
@@ -69,9 +69,6 @@ export function generateRandomUsername() {
   return `${randomAdj}.${randomNoun}${randomDigits}`;
 }
 
-/**
- * Generate a cryptographically secure random password
- */
 export function generateSecurePassword() {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+';
   let pass = '';
@@ -90,38 +87,57 @@ export function generateSecurePassword() {
   return pass;
 }
 
-/**
- * Storage keys
- */
-const STORAGE_KEY = 'dropmail_active_inbox_v1';
+const STORAGE_KEY = 'dropmail_active_inbox_v2';
 
 export const emailService = {
   /**
-   * Fetch available domains from provider
+   * Fetch available domains (including custom domain itcareerpoint.in)
    */
   async getDomains() {
-    const data = await apiRequest('/domains');
-    const members = Array.isArray(data) ? data : (data?.['hydra:member'] || []);
-    return members
-      .filter((d) => d && d.isActive !== false)
-      .map((d) => d.domain);
+    try {
+      const data = await apiRequest('/domains');
+      const members = Array.isArray(data) ? data : (data?.['hydra:member'] || []);
+      const domainList = members
+        .filter((d) => d && d.isActive !== false)
+        .map((d) => d.domain);
+
+      if (!domainList.includes(CUSTOM_DOMAIN)) {
+        domainList.unshift(CUSTOM_DOMAIN);
+      }
+      return domainList;
+    } catch {
+      return [CUSTOM_DOMAIN, 'maxxspace.com'];
+    }
   },
 
   /**
-   * Create a new temporary inbox
+   * Create a new temporary inbox (supports both Custom Domain and Mail.tm)
    */
   async createInbox(customUsername = null, selectedDomain = null) {
     const domains = await this.getDomains();
-    if (!domains || domains.length === 0) {
-      throw new Error('No active domains currently available from the temporary email provider.');
-    }
-
     const domain = selectedDomain && domains.includes(selectedDomain) ? selectedDomain : domains[0];
     const username = (customUsername && customUsername.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')) || generateRandomUsername();
     const address = `${username}@${domain}`;
+
+    // Handle Custom Domain: itcareerpoint.in
+    if (domain === CUSTOM_DOMAIN) {
+      const inboxData = {
+        id: 'custom_' + Date.now(),
+        address,
+        username,
+        domain,
+        isCustomDomain: true,
+        token: 'token_custom_' + Math.random().toString(36).substring(2, 10),
+        createdAt: new Date().toISOString(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      };
+      this.saveStoredInbox(inboxData);
+      return inboxData;
+    }
+
+    // Handle Mail.tm upstream domain
     const password = generateSecurePassword();
 
-    // 1. Register account
     const accountRes = await apiRequest('/accounts', {
       method: 'POST',
       body: { address, password },
@@ -129,7 +145,6 @@ export const emailService = {
 
     const accountId = accountRes.id || accountRes['@id']?.split('/').pop();
 
-    // 2. Obtain JWT Bearer Token
     const tokenRes = await apiRequest('/token', {
       method: 'POST',
       body: { address, password },
@@ -141,26 +156,22 @@ export const emailService = {
       username,
       domain,
       password,
+      isCustomDomain: false,
       token: tokenRes.token,
       createdAt: accountRes.createdAt || new Date().toISOString(),
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours theoretical session
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     };
 
-    // Store in browser session
     this.saveStoredInbox(inboxData);
-
     return inboxData;
   },
 
-  /**
-   * Retrieve active inbox from sessionStorage
-   */
   getStoredInbox() {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.address && parsed.token) {
+      if (parsed && parsed.address) {
         return parsed;
       }
       return null;
@@ -169,20 +180,14 @@ export const emailService = {
     }
   },
 
-  /**
-   * Save active inbox to sessionStorage
-   */
   saveStoredInbox(inbox) {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(inbox));
     } catch (e) {
-      console.warn('Failed to persist inbox state to sessionStorage', e);
+      console.warn('Failed to persist inbox state', e);
     }
   },
 
-  /**
-   * Clear active inbox from sessionStorage
-   */
   clearStoredInbox() {
     try {
       sessionStorage.removeItem(STORAGE_KEY);
@@ -192,10 +197,25 @@ export const emailService = {
   },
 
   /**
-   * Fetch inbox messages list
+   * Fetch inbox messages list (dual-engine router)
    */
-  async getMessages(token, page = 1) {
-    if (!token) throw new Error('Authentication token required to fetch messages.');
+  async getMessages(token, page = 1, address = null) {
+    const isCustom = address && address.endsWith(`@${CUSTOM_DOMAIN}`);
+
+    if (isCustom) {
+      const data = await apiRequest(`/custom/messages?address=${encodeURIComponent(address)}`);
+      return {
+        messages: (data?.messages || []).map((m) => ({
+          ...m,
+          seen: Boolean(m.seen),
+          hasAttachments: Boolean(m.hasAttachments),
+        })),
+        total: data?.total || 0,
+        page: 1,
+      };
+    }
+
+    if (!token) throw new Error('Authentication token required.');
 
     const data = await apiRequest(`/messages?page=${page}`, {
       headers: {
@@ -232,9 +252,19 @@ export const emailService = {
   },
 
   /**
-   * Fetch single message details (including full text and HTML body)
+   * Fetch single message details (dual-engine router)
    */
-  async getMessage(token, messageId) {
+  async getMessage(token, messageId, address = null) {
+    const isCustom = address && address.endsWith(`@${CUSTOM_DOMAIN}`);
+
+    if (isCustom) {
+      const data = await apiRequest(`/custom/message/${messageId}?address=${encodeURIComponent(address)}`);
+      return {
+        ...data,
+        seen: true,
+      };
+    }
+
     if (!token) throw new Error('Authentication token required.');
     if (!messageId) throw new Error('Message ID required.');
 
@@ -266,8 +296,6 @@ export const emailService = {
         filename: att.filename || 'attachment',
         contentType: att.contentType || 'application/octet-stream',
         disposition: att.disposition || 'attachment',
-        transferEncoding: att.transferEncoding,
-        related: Boolean(att.related),
         size: att.size || 0,
         downloadUrl: att.downloadUrl,
       })),
@@ -277,7 +305,14 @@ export const emailService = {
   /**
    * Delete single message
    */
-  async deleteMessage(token, messageId) {
+  async deleteMessage(token, messageId, address = null) {
+    const isCustom = address && address.endsWith(`@${CUSTOM_DOMAIN}`);
+    if (isCustom) {
+      return await apiRequest(`/custom/message/${messageId}?address=${encodeURIComponent(address)}`, {
+        method: 'DELETE',
+      });
+    }
+
     if (!token || !messageId) return;
     return await apiRequest(`/messages/${messageId}`, {
       method: 'DELETE',
@@ -290,7 +325,13 @@ export const emailService = {
   /**
    * Delete account permanently
    */
-  async deleteAccount(token, accountId) {
+  async deleteAccount(token, accountId, address = null) {
+    const isCustom = address && address.endsWith(`@${CUSTOM_DOMAIN}`);
+    if (isCustom) {
+      this.clearStoredInbox();
+      return;
+    }
+
     if (!token || !accountId) return;
     try {
       await apiRequest(`/accounts/${accountId}`, {
@@ -300,7 +341,7 @@ export const emailService = {
         },
       });
     } catch (err) {
-      console.warn('Account deletion request returned:', err.message);
+      console.warn('Account deletion returned:', err.message);
     } finally {
       this.clearStoredInbox();
     }

@@ -72,12 +72,12 @@ export default function App() {
    * Fetch latest messages for active inbox
    */
   const fetchMessagesForInbox = useCallback(
-    async (token, page = 1, isManual = false) => {
-      if (!token) return;
+    async (inbox, page = 1, isManual = false) => {
+      if (!inbox || !inbox.token) return;
       if (isManual) setIsRefreshing(true);
 
       try {
-        const result = await emailService.getMessages(token, page);
+        const result = await emailService.getMessages(inbox.token, page, inbox.address);
         setProviderStatus('online');
 
         // Check if any new messages arrived
@@ -105,7 +105,6 @@ export default function App() {
       } catch (err) {
         console.error('Error fetching messages:', err);
         if (err.status === 401 || err.status === 404) {
-          // Token expired or inbox purged by provider
           addToast('Your temporary inbox session has expired. Generating a fresh one.', 'error');
           handleGenerateNewInbox();
         } else {
@@ -138,14 +137,14 @@ export default function App() {
         const stored = emailService.getStoredInbox();
         if (stored && stored.token && stored.address) {
           setCurrentInbox(stored);
-          await fetchMessagesForInbox(stored.token, 1);
+          await fetchMessagesForInbox(stored, 1);
         } else {
           // 3. Create fresh inbox
           const newInbox = await emailService.createInbox(null, availableDomains[0]);
           if (!isMounted) return;
           setCurrentInbox(newInbox);
           prevMessageIdsRef.current = new Set();
-          await fetchMessagesForInbox(newInbox.token, 1);
+          await fetchMessagesForInbox(newInbox, 1);
           addToast(`Ready! Temporary address generated.`, 'success');
         }
       } catch (err) {
@@ -181,7 +180,7 @@ export default function App() {
         if (prev <= 1) {
           // Trigger poll only if tab is currently visible
           if (!document.hidden) {
-            fetchMessagesForInbox(currentInbox.token, currentPage, false);
+            fetchMessagesForInbox(currentInbox, currentPage, false);
           }
           return DEFAULT_POLL_INTERVAL;
         }
@@ -301,7 +300,7 @@ export default function App() {
     );
 
     try {
-      const fullMessage = await emailService.getMessage(currentInbox.token, messageId);
+      const fullMessage = await emailService.getMessage(currentInbox.token, messageId, currentInbox.address);
       setSelectedMessage(fullMessage);
     } catch (err) {
       console.error('Error loading message content:', err);
@@ -317,7 +316,7 @@ export default function App() {
   const handleDeleteMessage = async (messageId) => {
     if (!currentInbox?.token || !messageId) return;
     try {
-      await emailService.deleteMessage(currentInbox.token, messageId);
+      await emailService.deleteMessage(currentInbox.token, messageId, currentInbox.address);
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
       setTotalMessages((prev) => Math.max(0, prev - 1));
       prevMessageIdsRef.current.delete(messageId);
@@ -338,7 +337,7 @@ export default function App() {
   const handleManualRefresh = () => {
     if (!currentInbox?.token) return;
     setSecondsUntilNextPoll(DEFAULT_POLL_INTERVAL);
-    fetchMessagesForInbox(currentInbox.token, currentPage, true);
+    fetchMessagesForInbox(currentInbox, currentPage, true);
   };
 
   return (
